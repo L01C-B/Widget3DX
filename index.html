@@ -1,16 +1,38 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:widget="http://www.netvibes.com/ns/">
+
 <head>
   <title>Copilote 3DX</title>
 
-  <meta name="description" content="Widget chat V0 pour copilote 3DEXPERIENCE" />
-  <meta name="keywords" content="3DEXPERIENCE, widget, copilote, chat" />
+  <meta name="author" content="Loïc Brangier" />
+  <meta name="description" content="Copilote 3DX - Widget chat V0" />
+  <meta name="apiVersion" content="1.3" />
+  <meta name="debugMode" content="true" />
+  <meta name="strictMode" content="false" />
+
+  <widget:preferences>
+    <widget:preference type="text" name="backendUrl" label="Backend URL" defaultValue="" />
+  </widget:preferences>
 
   <link rel="stylesheet" type="text/css" href="./style.css" />
   <script type="text/javascript" src="./main.js"></script>
+
+  <script type="text/javascript">
+    function widgetLoading() {
+      if (typeof widget !== "undefined" && widget) {
+        executeWidgetCode();
+      } else {
+        console.warn("Deferred widget loading");
+        setTimeout(widgetLoading, 100);
+      }
+    }
+    widgetLoading();
+  </script>
 </head>
+
 <body>
-  <!-- Le contenu réel sera injecté dans widget.body par main.js -->
+  <p>Loading Widget ...</p>
 </body>
+
 </html>
