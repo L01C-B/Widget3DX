@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:widget="http://www.netvibes.com/ns/">
-
 <head>
   <title>Copilote 3DX</title>
 
@@ -15,24 +14,11 @@
     <widget:preference type="text" name="backendUrl" label="Backend URL" defaultValue="" />
   </widget:preferences>
 
-  <link rel="stylesheet" type="text/css" href="./style.css" />
-  <script type="text/javascript" src="./main.js"></script>
-
-  <script type="text/javascript">
-    function widgetLoading() {
-      if (typeof widget !== "undefined" && widget) {
-        executeWidgetCode();
-      } else {
-        console.warn("Deferred widget loading");
-        setTimeout(widgetLoading, 100);
-      }
-    }
-    widgetLoading();
-  </script>
+  ./style.css
+  ./main.jsscript>
 </head>
 
 <body>
   <p>Loading Widget ...</p>
 </body>
-
 </html>
