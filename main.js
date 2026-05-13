@@ -3,6 +3,7 @@
 
   var DEBUG = true;
   var panelReady = false;
+  var appStarted = false;
 
   function debugLog() {
     var args = Array.prototype.slice.call(arguments);
@@ -96,7 +97,24 @@
     }
   };
 
-  function probe(url) {
+  function getAppBaseUrl() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var uwaUrl = params.get('uwaUrl');
+      if (uwaUrl) {
+        return uwaUrl.endsWith('/') ? uwaUrl : uwaUrl + '/';
+      }
+    } catch (e) {
+      debugLog('getAppBaseUrl error', e.message || e);
+    }
+
+    // fallback standalone
+    var url = window.location.href;
+    return url.substring(0, url.lastIndexOf('/') + 1);
+  }
+
+  function probeAbsolute(path) {
+    var url = getAppBaseUrl() + path.replace(/^\.?\//, '');
     fetch(url, { method: 'GET' })
       .then(function (response) {
         debugLog('probe', url, 'status=', response.status);
@@ -107,6 +125,12 @@
   }
 
   function renderApp(target) {
+    if (appStarted) {
+      debugLog('renderApp ignored: already started');
+      return;
+    }
+    appStarted = true;
+
     debugLog('renderApp called. target exists =', !!target);
 
     if (!target) {
@@ -118,7 +142,7 @@
       '<div class="copilot">' +
         '<div class="copilot-header">' +
           '<div class="title">Copilote 3DX</div>' +
-          '<div class="subtitle">V0 — debug mode</div>' +
+          '<div class="subtitle">V0 — debug lifecycle</div>' +
         '</div>' +
         '<div id="messages" class="messages"></div>' +
         '<div class="input-zone">' +
@@ -146,63 +170,40 @@
       messages.scrollTop = messages.scrollHeight;
     }
 
-    function buildFakeReply(text) {
-      return 'Debug reply: ' + text;
-    }
-
     function sendMessage() {
-      if (!input) {
-        debugLog('sendMessage aborted: input missing');
-        return;
-      }
+      if (!input) return;
 
       var text = input.value.replace(/^\s+|\s+$/g, '');
-      if (!text) {
-        debugLog('sendMessage ignored: empty input');
-        return;
-      }
+      if (!text) return;
 
-      debugLog('sendMessage =>', text);
       addMessage('user', text);
       input.value = '';
 
       setTimeout(function () {
-        addMessage('assistant', buildFakeReply(text));
+        addMessage('assistant', 'Debug reply: ' + text);
       }, 300);
     }
 
     if (button) {
       button.onclick = sendMessage;
-    } else {
-      debugLog('button not found');
     }
 
     if (input) {
       input.onkeydown = function (e) {
         e = e || window.event;
         if (e.key === 'Enter' || e.keyCode === 13) {
-          if (e.preventDefault) {
-            e.preventDefault();
-          }
+          if (e.preventDefault) e.preventDefault();
           sendMessage();
         }
       };
-    } else {
-      debugLog('input not found');
     }
 
     addMessage('assistant', 'Bonjour 👋 Debug mode actif.');
     debugLog('renderApp DONE');
   }
 
-  function initStandalone() {
-    debugLog('Mode standalone détecté');
-    renderApp(document.body);
-  }
-
   function init3DX() {
     debugLog('Mode 3DX détecté');
-    debugLog('widget exists =', typeof widget !== 'undefined');
     debugLog('widget.body exists =', !!(widget && widget.body));
     debugLog('widget.addEvent exists =', !!(widget && widget.addEvent));
 
@@ -218,29 +219,51 @@
         debugLog(error.stack);
       }
     }
+  }
 
-    // Timeout diagnostic : si onLoad ne part jamais
-    setTimeout(function () {
-      debugLog('5s timeout reached. If no "widget.onLoad fired", onLoad never happened.');
-    }, 5000);
+  function initStandalone() {
+    debugLog('Mode standalone détecté');
+    renderApp(document.body);
+  }
+
+  function waitForWidgetOrFallback() {
+    var tries = 0;
+    var maxTries = 60; // ~6 secondes à 100ms
+
+    function step() {
+      tries += 1;
+
+      var hasWidget = (typeof widget !== 'undefined' && widget && widget.addEvent && widget.body);
+      debugLog('waitForWidget attempt', tries, 'hasWidget =', hasWidget);
+
+      if (hasWidget) {
+        init3DX();
+        return;
+      }
+
+      if (tries >= maxTries) {
+        debugLog('widget absent après délai -> fallback standalone');
+        initStandalone();
+        return;
+      }
+
+      setTimeout(step, 100);
+    }
+
+    step();
   }
 
   function bootstrap() {
     debugLog('bootstrap start');
     debugLog('location =', window.location.href);
     debugLog('document.readyState =', document.readyState);
-    debugLog('widget typeof =', typeof widget);
+    debugLog('appBaseUrl =', getAppBaseUrl());
 
-    probe('./main.js');
-    probe('./style.css');
-    probe('./assets/help/help_en.json');
-    probe('./assets/help/help_fr.json');
+    // Probes ABSOLUES utiles uniquement pour debug
+    probeAbsolute('assets/help/help_en.json');
+    probeAbsolute('assets/help/help_fr.json');
 
-    if (typeof widget !== 'undefined' && widget && widget.addEvent && widget.body) {
-      init3DX();
-    } else {
-      initStandalone();
-    }
+    waitForWidgetOrFallback();
   }
 
   if (document.readyState === 'loading') {
