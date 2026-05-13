@@ -12,7 +12,7 @@
     target.innerHTML =
       '<div class="copilot">' +
         '<div class="copilot-header">' +
-          '<div class="title">Copilote 3DX</div>' +
+          '<div class="title">Copilote 3DX V0</div>' +
           '<div class="subtitle">Version propre minimale</div>' +
         '</div>' +
         '<div id="messages" class="messages"></div>' +
