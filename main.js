@@ -3,6 +3,129 @@
 
   var appStarted = false;
 
+  // =========================
+  // Configuration
+  // =========================
+  // Pour tes tests locaux :
+  var BACKEND_URL = 'http://127.0.0.1:8000/chat';
+
+  // =========================
+  // Helpers runtime
+  // =========================
+  function is3DXRuntime() {
+    return typeof widget !== 'undefined' && widget && widget.body && widget.addEvent;
+  }
+
+  function isLocalBackend(url) {
+    return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(url);
+  }
+
+  function getThreadId() {
+    var key = 'copilot3dx-thread-id';
+    var value = null;
+
+    try {
+      value = window.localStorage.getItem(key);
+      if (!value) {
+        value = 'thread-' + Date.now();
+        window.localStorage.setItem(key, value);
+      }
+    } catch (e) {
+      value = 'thread-' + Date.now();
+    }
+
+    return value;
+  }
+
+  function extractAnswer(data) {
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch (e) {
+        return data;
+      }
+    }
+
+    if (data && typeof data.answer === 'string') {
+      return data.answer;
+    }
+
+    return 'Réponse reçue, mais format inattendu.';
+  }
+
+  // =========================
+  // Transport backend
+  // =========================
+  function postJsonFetch(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    }).then(function (response) {
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status);
+      }
+      return response.json();
+    });
+  }
+
+  function postJsonProxified(url, payload) {
+    return new Promise(function (resolve, reject) {
+      if (typeof require === 'undefined') {
+        reject(new Error('RequireJS non disponible dans ce contexte.'));
+        return;
+      }
+
+      require(['DS/WAFData/WAFData'], function (WAFData) {
+        try {
+          WAFData.proxifiedRequest(url, {
+            method: 'POST',
+            type: 'json',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            data: JSON.stringify(payload),
+            onComplete: function (data) {
+              resolve(data);
+            },
+            onFailure: function (error) {
+              reject(error || new Error('Échec proxifiedRequest'));
+            }
+          });
+        } catch (e) {
+          reject(e);
+        }
+      }, function (err) {
+        reject(err || new Error('Impossible de charger DS/WAFData/WAFData'));
+      });
+    });
+  }
+
+  function sendToBackend(message) {
+    var payload = {
+      message: message,
+      thread_id: getThreadId()
+    };
+
+    // Cas 1 : backend local -> toujours fetch
+    if (isLocalBackend(BACKEND_URL)) {
+      return postJsonFetch(BACKEND_URL, payload).then(extractAnswer);
+    }
+
+    // Cas 2 : backend distant + runtime 3DX -> proxified
+    if (is3DXRuntime()) {
+      return postJsonProxified(BACKEND_URL, payload).then(extractAnswer);
+    }
+
+    // Cas 3 : backend distant + standalone -> fetch
+    return postJsonFetch(BACKEND_URL, payload).then(extractAnswer);
+  }
+
+  // =========================
+  // UI
+  // =========================
   function renderApp(target) {
     if (appStarted || !target) {
       return;
@@ -12,8 +135,8 @@
     target.innerHTML =
       '<div class="copilot">' +
         '<div class="copilot-header">' +
-          '<div class="title">Copilote 3DX V0 (démo test)</div>' +
-          '<div class="subtitle">Version propre minimale</div>' +
+          '<div class="title">Copilote 3DX</div>' +
+          '<div class="subtitle">Connecté au backend</div>' +
         '</div>' +
         '<div id="messages" class="messages"></div>' +
         '<div class="input-zone">' +
@@ -36,22 +159,14 @@
       messages.scrollTop = messages.scrollHeight;
     }
 
-    function buildFakeReply(text) {
-      var lower = text.toLowerCase();
-
-      if (lower.indexOf('bonjour') !== -1 || lower.indexOf('salut') !== -1) {
-        return 'Bonjour ! Je suis prêt à t’aider sur 3DEXPERIENCE.';
+    function setLoading(isLoading) {
+      if (button) {
+        button.disabled = !!isLoading;
+        button.textContent = isLoading ? 'Envoi...' : 'Envoyer';
       }
-
-      if (lower.indexOf('3dx') !== -1 || lower.indexOf('3dexperience') !== -1) {
-        return 'Je suis intégré au widget 3DX et prêt pour la prochaine étape backend.';
+      if (input) {
+        input.disabled = !!isLoading;
       }
-
-      if (lower.indexOf('objet') !== -1 || lower.indexOf('item') !== -1) {
-        return 'Bientôt, je pourrai résumer un objet 3DX et exploiter son contexte.';
-      }
-
-      return 'Réponse simulée locale : j’ai bien reçu ton message.';
     }
 
     function sendMessage() {
@@ -62,10 +177,26 @@
 
       addMessage('user', text);
       input.value = '';
+      setLoading(true);
 
-      setTimeout(function () {
-        addMessage('assistant', buildFakeReply(text));
-      }, 300);
+      sendToBackend(text)
+        .then(function (answer) {
+          addMessage('assistant', answer);
+        })
+        .catch(function (error) {
+          var message = 'Erreur backend.';
+          if (error && error.message) {
+            message += ' ' + error.message;
+          }
+          addMessage('assistant', message);
+          console.error('[Copilot3DX] sendToBackend error:', error);
+        })
+        .finally(function () {
+          setLoading(false);
+          if (input) {
+            input.focus();
+          }
+        });
     }
 
     if (button) {
@@ -82,9 +213,19 @@
       };
     }
 
-    addMessage('assistant', 'Bonjour 👋 Je suis le copilote 3DX.');
+    addMessage(
+      'assistant',
+      isLocalBackend(BACKEND_URL)
+        ? 'Bonjour 👋 Backend local détecté : appel via fetch.'
+        : (is3DXRuntime()
+            ? 'Bonjour 👋 Backend distant détecté : appel via proxifiedRequest.'
+            : 'Bonjour 👋 Backend distant détecté : appel via fetch.')
+    );
   }
 
+  // =========================
+  // Init
+  // =========================
   function init3DX() {
     widget.addEvent('onLoad', function () {
       renderApp(widget.body);
@@ -102,9 +243,7 @@
     function step() {
       tries += 1;
 
-      var hasWidget = (typeof widget !== 'undefined' && widget && widget.addEvent && widget.body);
-
-      if (hasWidget) {
+      if (is3DXRuntime()) {
         init3DX();
         return;
       }
