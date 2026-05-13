@@ -1,9 +1,116 @@
 (function () {
   'use strict';
 
+  var DEBUG = true;
+  var panelReady = false;
+
+  function debugLog() {
+    var args = Array.prototype.slice.call(arguments);
+    var msg = args.map(function (x) {
+      if (typeof x === 'object') {
+        try {
+          return JSON.stringify(x);
+        } catch (e) {
+          return String(x);
+        }
+      }
+      return String(x);
+    }).join(' ');
+
+    console.log('[Copilot3DX]', msg);
+
+    if (DEBUG) {
+      try {
+        ensureDebugPanel();
+        var lines = document.getElementById('copilot-debug-lines');
+        if (lines) {
+          var div = document.createElement('div');
+          div.textContent = new Date().toISOString() + ' | ' + msg;
+          lines.appendChild(div);
+          lines.scrollTop = lines.scrollHeight;
+        }
+      } catch (e) {
+        console.log('[Copilot3DX] debug panel error', e);
+      }
+    }
+  }
+
+  function ensureDebugPanel() {
+    if (panelReady) return;
+
+    var host = document.body || document.documentElement;
+    if (!host) return;
+
+    var existing = document.getElementById('copilot-debug-panel');
+    if (existing) {
+      panelReady = true;
+      return;
+    }
+
+    var panel = document.createElement('div');
+    panel.id = 'copilot-debug-panel';
+    panel.style.position = 'fixed';
+    panel.style.right = '8px';
+    panel.style.bottom = '8px';
+    panel.style.width = '420px';
+    panel.style.maxHeight = '220px';
+    panel.style.overflow = 'auto';
+    panel.style.zIndex = '999999';
+    panel.style.background = 'rgba(0,0,0,0.85)';
+    panel.style.color = '#00ff99';
+    panel.style.fontFamily = 'monospace';
+    panel.style.fontSize = '11px';
+    panel.style.padding = '8px';
+    panel.style.border = '1px solid #666';
+    panel.style.borderRadius = '6px';
+
+    var title = document.createElement('div');
+    title.textContent = 'Copilot3DX Debug Panel';
+    title.style.fontWeight = 'bold';
+    title.style.marginBottom = '6px';
+    title.style.color = '#ffffff';
+
+    var lines = document.createElement('div');
+    lines.id = 'copilot-debug-lines';
+
+    panel.appendChild(title);
+    panel.appendChild(lines);
+    host.appendChild(panel);
+
+    panelReady = true;
+  }
+
+  window.onerror = function (message, source, lineno, colno, error) {
+    debugLog('window.onerror =>', message, 'at', source + ':' + lineno + ':' + colno);
+    if (error && error.stack) {
+      debugLog('stack =>', error.stack);
+    }
+  };
+
+  window.onunhandledrejection = function (event) {
+    var reason = event && event.reason ? event.reason : 'unknown';
+    if (reason && reason.stack) {
+      debugLog('unhandledrejection =>', reason.stack);
+    } else {
+      debugLog('unhandledrejection =>', reason);
+    }
+  };
+
+  function probe(url) {
+    fetch(url, { method: 'GET' })
+      .then(function (response) {
+        debugLog('probe', url, 'status=', response.status);
+      })
+      .catch(function (error) {
+        debugLog('probe FAIL', url, error.message || error);
+      });
+  }
+
   function renderApp(target) {
+    debugLog('renderApp called. target exists =', !!target);
+
     if (!target) {
-      console.error('[Copilote3DX] Aucun conteneur cible trouvé.');
+      debugLog('renderApp aborted: no target');
       return;
     }
 
@@ -11,7 +118,7 @@
       '<div class="copilot">' +
         '<div class="copilot-header">' +
           '<div class="title">Copilote 3DX</div>' +
-          '<div class="subtitle">V0 — démo locale sans backend</div>' +
+          '<div class="subtitle">V0 — debug mode</div>' +
         '</div>' +
         '<div id="messages" class="messages"></div>' +
         '<div class="input-zone">' +
@@ -20,12 +127,15 @@
         '</div>' +
       '</div>';
 
+    ensureDebugPanel();
+
     var input = document.getElementById('userInput');
     var button = document.getElementById('sendBtn');
 
     function addMessage(role, text) {
       var messages = document.getElementById('messages');
       if (!messages) {
+        debugLog('addMessage aborted: #messages not found');
         return;
       }
 
@@ -37,47 +147,34 @@
     }
 
     function buildFakeReply(text) {
-      var lower = text.toLowerCase();
-
-      if (lower.indexOf('bonjour') !== -1 || lower.indexOf('salut') !== -1) {
-        return 'Bonjour ! Je suis prêt à t’aider sur 3DEXPERIENCE.';
-      }
-
-      if (lower.indexOf('3dx') !== -1 || lower.indexOf('3dexperience') !== -1) {
-        return 'Pour l’instant je suis une V0 locale. À l’étape suivante, je serai connecté à ton backend copilote.';
-      }
-
-      if (lower.indexOf('objet') !== -1 || lower.indexOf('item') !== -1) {
-        return 'Bientôt, je pourrai résumer un objet 3DX et exploiter son contexte.';
-      }
-
-      if (lower.indexOf('aide') !== -1 || lower.indexOf('help') !== -1) {
-        return 'Essaie par exemple : "Bonjour", "Parle-moi de 3DX", ou "Résume cet objet".';
-      }
-
-      return 'Réponse simulée locale : j’ai bien reçu ton message.';
+      return 'Debug reply: ' + text;
     }
 
     function sendMessage() {
       if (!input) {
+        debugLog('sendMessage aborted: input missing');
         return;
       }
 
       var text = input.value.replace(/^\s+|\s+$/g, '');
       if (!text) {
+        debugLog('sendMessage ignored: empty input');
         return;
       }
 
+      debugLog('sendMessage =>', text);
       addMessage('user', text);
       input.value = '';
 
       setTimeout(function () {
         addMessage('assistant', buildFakeReply(text));
-      }, 400);
+      }, 300);
     }
 
     if (button) {
       button.onclick = sendMessage;
+    } else {
+      debugLog('button not found');
     }
 
     if (input) {
@@ -90,31 +187,55 @@
           sendMessage();
         }
       };
+    } else {
+      debugLog('input not found');
     }
 
-    addMessage('assistant', 'Bonjour 👋 Je suis le copilote 3DX en mode démo locale.');
-    console.log('[Copilote3DX] Interface rendue avec succès.');
+    addMessage('assistant', 'Bonjour 👋 Debug mode actif.');
+    debugLog('renderApp DONE');
   }
 
   function initStandalone() {
-    console.log('[Copilote3DX] Mode standalone détecté.');
+    debugLog('Mode standalone détecté');
     renderApp(document.body);
   }
 
   function init3DX() {
-    console.log('[Copilote3DX] Mode 3DX détecté, attente de onLoad.');
+    debugLog('Mode 3DX détecté');
+    debugLog('widget exists =', typeof widget !== 'undefined');
+    debugLog('widget.body exists =', !!(widget && widget.body));
+    debugLog('widget.addEvent exists =', !!(widget && widget.addEvent));
 
     try {
       widget.addEvent('onLoad', function () {
-        console.log('[Copilote3DX] onLoad reçu.');
+        debugLog('widget.onLoad fired');
         renderApp(widget.body);
       });
+      debugLog('widget.addEvent(onLoad) registered');
     } catch (error) {
-      console.error('[Copilote3DX] Erreur pendant init3DX:', error);
+      debugLog('init3DX ERROR =>', error.message || error);
+      if (error && error.stack) {
+        debugLog(error.stack);
+      }
     }
+
+    // Timeout diagnostic : si onLoad ne part jamais
+    setTimeout(function () {
+      debugLog('5s timeout reached. If no "widget.onLoad fired", onLoad never happened.');
+    }, 5000);
   }
 
   function bootstrap() {
+    debugLog('bootstrap start');
+    debugLog('location =', window.location.href);
+    debugLog('document.readyState =', document.readyState);
+    debugLog('widget typeof =', typeof widget);
+
+    probe('./main.js');
+    probe('./style.css');
+    probe('./assets/help/help_en.json');
+    probe('./assets/help/help_fr.json');
+
     if (typeof widget !== 'undefined' && widget && widget.addEvent && widget.body) {
       init3DX();
     } else {
@@ -123,7 +244,10 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrap);
+    document.addEventListener('DOMContentLoaded', function () {
+      debugLog('DOMContentLoaded fired');
+      bootstrap();
+    });
   } else {
     bootstrap();
   }
