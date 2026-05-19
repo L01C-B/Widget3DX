@@ -8,7 +8,7 @@
   // =========================
  
   // var BACKEND_URL = 'http://127.0.0.1:8000/chat';
-  var BACKEND_URL = "https://backendwidget3dx.onrender.com/";
+  var BACKEND_URL = "https://backendwidget3dx.onrender.com/chat";
 
   // =========================
   // Helpers runtime
