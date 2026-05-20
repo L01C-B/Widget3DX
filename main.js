@@ -6,19 +6,20 @@
   // =========================
   // Configuration
   // =========================
- 
+
+  // Décommenter pour tester en local :
   // var BACKEND_URL = 'http://127.0.0.1:8000/chat';
-  var BACKEND_URL = "https://backendwidget3dx.onrender.com/chat";
+  var BACKEND_URL = 'https://backendwidget3dx.onrender.com/chat';
+
+  // Timeout logique côté frontend (en ms)
+  var REQUEST_TIMEOUT_MS = 45000;
 
   // =========================
   // Helpers runtime
   // =========================
+
   function is3DXRuntime() {
     return typeof widget !== 'undefined' && widget && widget.body && widget.addEvent;
-  }
-
-  function isLocalBackend(url) {
-    return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(url);
   }
 
   function getThreadId() {
@@ -54,54 +55,52 @@
     return 'Réponse reçue, mais format inattendu.';
   }
 
-  // =========================
-  // Transport backend
-  // =========================
-  function postJsonFetch(url, payload) {
-    return fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    }).then(function (response) {
-      if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
-      }
-      return response.json();
+  function withTimeout(promise, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Timeout après ' + timeoutMs + ' ms'));
+      }, timeoutMs);
+
+      promise
+        .then(function (result) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(result);
+        })
+        .catch(function (error) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        });
     });
   }
 
-  function postJsonProxified(url, payload) {
-    return new Promise(function (resolve, reject) {
-      if (typeof require === 'undefined') {
-        reject(new Error('RequireJS non disponible dans ce contexte.'));
-        return;
-      }
+  // =========================
+  // Transport backend
+  // =========================
 
-      require(['DS/WAFData/WAFData'], function (WAFData) {
-        try {
-          WAFData.proxifiedRequest(url, {
-            method: 'POST',
-            type: 'json',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            data: JSON.stringify(payload),
-            onComplete: function (data) {
-              resolve(data);
-            },
-            onFailure: function (error) {
-              reject(error || new Error('Échec proxifiedRequest'));
-            }
-          });
-        } catch (e) {
-          reject(e);
+  function postJson(url, payload) {
+    return withTimeout(
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      }).then(function (response) {
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
         }
-      }, function (err) {
-        reject(err || new Error('Impossible de charger DS/WAFData/WAFData'));
-      });
-    });
+        return response.json();
+      }),
+      REQUEST_TIMEOUT_MS
+    );
   }
 
   function sendToBackend(message) {
@@ -110,34 +109,25 @@
       thread_id: getThreadId()
     };
 
-    // Cas 1 : backend local -> toujours fetch
-    if (isLocalBackend(BACKEND_URL)) {
-      return postJsonFetch(BACKEND_URL, payload).then(extractAnswer);
-    }
-
-    // Cas 2 : backend distant + runtime 3DX -> proxified
-    if (is3DXRuntime()) {
-      return postJsonFetch(BACKEND_URL, payload).then(extractAnswer);
-    }
-
-    // Cas 3 : backend distant + standalone -> fetch
-    return postJsonFetch(BACKEND_URL, payload).then(extractAnswer);
+    return postJson(BACKEND_URL, payload).then(extractAnswer);
   }
 
   // =========================
   // UI
   // =========================
+
   function renderApp(target) {
     if (appStarted || !target) {
       return;
     }
+
     appStarted = true;
 
     target.innerHTML =
       '<div class="copilot">' +
         '<div class="copilot-header">' +
           '<div class="title">Copilote 3DX</div>' +
-          '<div class="subtitle">Connecté au backend</div>' +
+          '<div class="subtitle">Connexion backend via fetch</div>' +
         '</div>' +
         '<div id="messages" class="messages"></div>' +
         '<div class="input-zone">' +
@@ -148,9 +138,9 @@
 
     var input = document.getElementById('userInput');
     var button = document.getElementById('sendBtn');
+    var messages = document.getElementById('messages');
 
     function addMessage(role, text) {
-      var messages = document.getElementById('messages');
       if (!messages) return;
 
       var div = document.createElement('div');
@@ -165,6 +155,7 @@
         button.disabled = !!isLoading;
         button.textContent = isLoading ? 'Envoi...' : 'Envoyer';
       }
+
       if (input) {
         input.disabled = !!isLoading;
       }
@@ -173,7 +164,7 @@
     function sendMessage() {
       if (!input) return;
 
-      var text = input.value.replace(/^\s+|\s+$/g, '');
+      var text = input.value.trim();
       if (!text) return;
 
       addMessage('user', text);
@@ -189,6 +180,7 @@
           if (error && error.message) {
             message += ' ' + error.message;
           }
+
           addMessage('assistant', message);
           console.error('[Copilot3DX] sendToBackend error:', error);
         })
@@ -214,19 +206,13 @@
       };
     }
 
-    addMessage(
-      'assistant',
-      isLocalBackend(BACKEND_URL)
-        ? 'Bonjour 👋 Backend local détecté : appel via fetch.'
-        : (is3DXRuntime()
-            ? 'Bonjour 👋 Backend distant détecté : appel via proxifiedRequest.'
-            : 'Bonjour 👋 Backend distant détecté : appel via fetch.')
-    );
+    addMessage('assistant', 'Bonjour 👋 Je suis connecté au backend via fetch.');
   }
 
   // =========================
   // Init
   // =========================
+
   function init3DX() {
     widget.addEvent('onLoad', function () {
       renderApp(widget.body);
