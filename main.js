@@ -117,7 +117,7 @@
 
     // Cas 2 : backend distant + runtime 3DX -> proxified
     if (is3DXRuntime()) {
-      return postJsonProxified(BACKEND_URL, payload).then(extractAnswer);
+      return postJsonFetch(BACKEND_URL, payload).then(extractAnswer);
     }
 
     // Cas 3 : backend distant + standalone -> fetch
